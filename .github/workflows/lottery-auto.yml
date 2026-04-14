@@ -1,0 +1,227 @@
+name: Lottery Auto System
+
+on:
+  schedule:
+    # Notification times (IST to UTC)
+    # 1:00 PM IST = 07:30 UTC
+    - cron: '30 7 * * *'
+    # 1:10 PM IST = 07:40 UTC
+    - cron: '40 7 * * *'
+
+    # 6:00 PM IST = 12:30 UTC
+    - cron: '30 12 * * *'
+    # 6:10 PM IST = 12:40 UTC
+    - cron: '40 12 * * *'
+
+    # 8:00 PM IST = 14:30 UTC
+    - cron: '30 14 * * *'
+    # 8:10 PM IST = 14:40 UTC
+    - cron: '40 14 * * *'
+
+    # Firebase auto update after 30 min delay
+    # 1:30 PM IST = 08:00 UTC
+    - cron: '0 8 * * *'
+    # 6:30 PM IST = 13:00 UTC
+    - cron: '0 13 * * *'
+    # 8:30 PM IST = 15:00 UTC
+    - cron: '0 15 * * *'
+
+  workflow_dispatch:
+
+jobs:
+  auto-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install packages
+        run: pip install requests google-auth
+
+      - name: Run automation
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FCM_TOPIC: ${{ secrets.FCM_TOPIC }}
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+          FIREBASE_AUTH: ${{ secrets.FIREBASE_AUTH }}
+        run: |
+          python - << 'PY'
+          import os
+          import json
+          import requests
+          import datetime
+          import calendar
+          import urllib.parse
+
+          from google.oauth2 import service_account
+          from google.auth.transport.requests import Request
+
+          project_id = os.environ["FIREBASE_PROJECT_ID"]
+          service_account_json = os.environ["FIREBASE_SERVICE_ACCOUNT"]
+          fcm_topic = os.environ.get("FCM_TOPIC", "all")
+          db_url = os.environ["FIREBASE_DB_URL"].rstrip("/")
+          db_auth = os.environ.get("FIREBASE_AUTH", "").strip()
+
+          creds_info = json.loads(service_account_json)
+          creds = service_account.Credentials.from_service_account_info(
+              creds_info,
+              scopes=[
+                  "https://www.googleapis.com/auth/firebase.messaging",
+                  "https://www.googleapis.com/auth/firebase.database"
+              ]
+          )
+          creds.refresh(Request())
+          access_token = creds.token
+
+          now_utc = datetime.datetime.utcnow()
+          now_ist = now_utc + datetime.timedelta(hours=5, minutes=30)
+
+          current_date = now_ist.strftime("%Y-%m-%d")
+          hour = now_ist.hour
+          minute = now_ist.minute
+
+          def auth_db_url(url):
+              if db_auth:
+                  sep = "&" if "?" in url else "?"
+                  return f"{url}{sep}auth={urllib.parse.quote(db_auth)}"
+              return url
+
+          def send_notification(draw_time, title, body, extra="second", image=""):
+              url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
+              headers = {
+                  "Authorization": f"Bearer {access_token}",
+                  "Content-Type": "application/json; UTF-8"
+              }
+
+              payload = {
+                  "message": {
+                      "topic": fcm_topic,
+                      "notification": {
+                          "title": title,
+                          "body": body
+                      },
+                      "data": {
+                          "title": title,
+                          "body": body,
+                          "image": image,
+                          "extra": extra,
+                          "time": draw_time,
+                          "date": current_date
+                      },
+                      "android": {
+                          "priority": "HIGH"
+                      }
+                  }
+              }
+
+              r = requests.post(url, headers=headers, json=payload, timeout=30)
+              print("Notification:", r.status_code, r.text)
+              r.raise_for_status()
+
+          def previous_month_same_day(date_obj):
+              year = date_obj.year
+              month = date_obj.month
+              day = date_obj.day
+
+              if month == 1:
+                  prev_year = year - 1
+                  prev_month = 12
+              else:
+                  prev_year = year
+                  prev_month = month - 1
+
+              last_day_prev_month = calendar.monthrange(prev_year, prev_month)[1]
+
+              if day > last_day_prev_month:
+                  return None
+
+              return datetime.date(prev_year, prev_month, day)
+
+          def delete_previous_month_record(date_str, time_value):
+              date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+              prev_same = previous_month_same_day(date_obj)
+
+              if prev_same is None:
+                  print("Previous month same day not available, skip delete")
+                  return
+
+              prev_date_str = prev_same.strftime("%Y-%m-%d")
+              delete_url = f"{db_url}/results/{prev_date_str}/{time_value}.json"
+              delete_url = auth_db_url(delete_url)
+
+              rr = requests.delete(delete_url, timeout=30)
+              print("Delete previous month:", rr.status_code, rr.text)
+              rr.raise_for_status()
+
+          def save_result(draw_time):
+              api_url = f"https://indialotteryapi.com/wp-json/dearlottery/v1/by-date?date={current_date}&time={draw_time}&fallback=1"
+              print("Fetching:", api_url)
+
+              r = requests.get(api_url, timeout=30)
+              print("API:", r.status_code)
+              r.raise_for_status()
+              obj = r.json()
+
+              draw_no = obj.get("no", "")
+              date = obj.get("date", current_date)
+              time_value = obj.get("time", draw_time)
+              prizes = obj.get("prizes", {}) or {}
+
+              if not draw_no:
+                  print("draw_no empty, skip save")
+                  return
+
+              data_map = {
+                  "draw_no": draw_no,
+                  "date": date,
+                  "time": time_value,
+                  "prizes": {
+                      "1st": json.dumps(prizes.get("1st", []), ensure_ascii=False),
+                      "cons": json.dumps(prizes.get("cons", []), ensure_ascii=False),
+                      "2nd": json.dumps(prizes.get("2nd", []), ensure_ascii=False),
+                      "3rd": json.dumps(prizes.get("3rd", []), ensure_ascii=False),
+                      "4th": json.dumps(prizes.get("4th", []), ensure_ascii=False),
+                      "5th": json.dumps(prizes.get("5th", []), ensure_ascii=False)
+                  },
+                  "saved_at": int(now_ist.timestamp() * 1000)
+              }
+
+              save_url = f"{db_url}/results/{date}/{time_value}.json"
+              save_url = auth_db_url(save_url)
+
+              rr = requests.put(save_url, json=data_map, timeout=30)
+              print("Save Firebase:", rr.status_code, rr.text)
+              rr.raise_for_status()
+
+              delete_previous_month_record(date, time_value)
+
+          # Notifications
+          if hour == 13 and minute == 0:
+              send_notification("1pm", "Live result available", "Live result available")
+          elif hour == 13 and minute == 10:
+              send_notification("1pm", "Result available", "Result available")
+
+          elif hour == 18 and minute == 0:
+              send_notification("6pm", "Live result available", "Live result available")
+          elif hour == 18 and minute == 10:
+              send_notification("6pm", "Result available", "Result available")
+
+          elif hour == 20 and minute == 0:
+              send_notification("8pm", "Live result available", "Live result available")
+          elif hour == 20 and minute == 10:
+              send_notification("8pm", "Result available", "Result available")
+
+          # Firebase update after 30 min
+          elif hour == 13 and minute == 30:
+              save_result("1pm")
+          elif hour == 18 and minute == 30:
+              save_result("6pm")
+          elif hour == 20 and minute == 30:
+              save_result("8pm")
+          else:
+              print("No matching IST schedule")
+          PY
