@@ -82,7 +82,7 @@ jobs:
 
           current_date = now_ist.strftime("%Y-%m-%d")
           hour = 13
-minute = 30
+          minute = 30
 
           def auth_db_url(url):
               if db_auth:
