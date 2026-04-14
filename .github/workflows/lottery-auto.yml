@@ -81,8 +81,8 @@ jobs:
           now_ist = now_utc + datetime.timedelta(hours=5, minutes=30)
 
           current_date = now_ist.strftime("%Y-%m-%d")
-          hour = now_ist.hour
-          minute = now_ist.minute
+          hour = 13
+minute = 30
 
           def auth_db_url(url):
               if db_auth:
