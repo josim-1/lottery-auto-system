@@ -17,7 +17,7 @@ on:
       action_name:
         description: "Manual test action"
         required: true
-        default: "notify_1pm_live"
+        default: "save_1pm"
         type: choice
         options:
           - notify_1pm_live
@@ -88,6 +88,8 @@ jobs:
 
           now_utc = datetime.datetime.now(datetime.timezone.utc)
           now_ist = now_utc + datetime.timedelta(hours=5, minutes=30)
+
+          # Always use IST current date for Firebase path
           current_date = now_ist.strftime("%Y-%m-%d")
 
           def auth_db_url(url):
@@ -147,8 +149,8 @@ jobs:
 
               return datetime.date(prev_year, prev_month, day)
 
-          def delete_previous_month_record(date_str, time_value):
-              date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+          def delete_previous_month_record(save_date_str, time_value):
+              date_obj = datetime.datetime.strptime(save_date_str, "%Y-%m-%d").date()
               prev_same = previous_month_same_day(date_obj)
 
               if prev_same is None:
@@ -162,7 +164,6 @@ jobs:
               rr = requests.delete(delete_url, timeout=30)
               print("Delete status:", rr.status_code)
               print("Delete body:", rr.text)
-              rr.raise_for_status()
 
           def save_result(draw_time):
               api_url = f"https://indialotteryapi.com/wp-json/dearlottery/v1/by-date?date={current_date}&time={draw_time}&fallback=1"
@@ -176,7 +177,7 @@ jobs:
               obj = r.json()
 
               draw_no = obj.get("no", "")
-              date = obj.get("date", current_date)
+              api_date = obj.get("date", "")
               time_value = obj.get("time", draw_time)
               prizes = obj.get("prizes", {}) or {}
 
@@ -184,9 +185,14 @@ jobs:
                   print("draw_no empty. Skip save.")
                   return
 
+              # IMPORTANT FIX:
+              # Save path always uses IST current date, not API date
+              save_date = current_date
+
               data_map = {
                   "draw_no": draw_no,
-                  "date": date,
+                  "date": save_date,
+                  "api_date": api_date,
                   "time": time_value,
                   "test_status": "github_test_ok",
                   "prizes": {
@@ -200,7 +206,7 @@ jobs:
                   "saved_at": int(now_ist.timestamp() * 1000)
               }
 
-              save_url = f"{db_url}/results/{date}/{time_value}.json"
+              save_url = f"{db_url}/results/{save_date}/{time_value}.json"
               save_url = auth_db_url(save_url)
 
               rr = requests.put(save_url, json=data_map, timeout=30)
@@ -208,7 +214,7 @@ jobs:
               print("Save Firebase body:", rr.text)
               rr.raise_for_status()
 
-              delete_previous_month_record(date, time_value)
+              delete_previous_month_record(save_date, time_value)
 
           def choose_action():
               if event_name == "workflow_dispatch":
