@@ -37,6 +37,7 @@ jobs:
           import json
           import requests
           import datetime
+          import calendar
           import urllib.parse
 
           db_url = os.environ["FIREBASE_DB_URL"].rstrip("/")
@@ -52,6 +53,39 @@ jobs:
                   sep = "&" if "?" in url else "?"
                   return f"{url}{sep}auth={urllib.parse.quote(db_auth)}"
               return url
+
+          def previous_month_same_day(date_str):
+              dt = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+
+              if dt.month == 1:
+                  prev_year = dt.year - 1
+                  prev_month = 12
+              else:
+                  prev_year = dt.year
+                  prev_month = dt.month - 1
+
+              last_day_prev_month = calendar.monthrange(prev_year, prev_month)[1]
+
+              if dt.day > last_day_prev_month:
+                  return None
+
+              prev_date = datetime.date(prev_year, prev_month, dt.day)
+              return prev_date.strftime("%Y-%m-%d")
+
+          def delete_previous_month_same_time(current_date, draw_time):
+              prev_date = previous_month_same_day(current_date)
+
+              if prev_date is None:
+                  print("No same date in previous month. Skip delete.")
+                  return
+
+              delete_url = f"{db_url}/FirebaseDB/results/{prev_date}/{draw_time}.json"
+              delete_url = auth_db_url(delete_url)
+
+              rr = requests.delete(delete_url, timeout=30)
+              print("Delete previous month URL:", delete_url)
+              print("Delete status:", rr.status_code)
+              print("Delete body:", rr.text)
 
           def save_result(draw_time):
               api_url = f"https://indialotteryapi.com/wp-json/dearlottery/v1/by-date?date={today_date}&time={draw_time}&fallback=1"
@@ -87,8 +121,6 @@ jobs:
                   "saved_at": int(now_ist.timestamp() * 1000)
               }
 
-              # IMPORTANT FIX:
-              # Firebase root me FirebaseDB node already hai
               save_url = f"{db_url}/FirebaseDB/results/{today_date}/{draw_time}.json"
               save_url = auth_db_url(save_url)
 
@@ -97,6 +129,9 @@ jobs:
               print("Save Firebase status:", rr.status_code)
               print("Save Firebase body:", rr.text)
               rr.raise_for_status()
+
+              # save ke baad previous month same date and time delete
+              delete_previous_month_same_time(today_date, draw_time)
 
           print("Today IST date:", today_date)
           print("Selected action:", action)
