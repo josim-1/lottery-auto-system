@@ -5,11 +5,9 @@ on:
     - cron: '30 7 * * *'
     - cron: '40 7 * * *'
     - cron: '0 8 * * *'
-
     - cron: '30 12 * * *'
     - cron: '40 12 * * *'
     - cron: '0 13 * * *'
-
     - cron: '30 14 * * *'
     - cron: '40 14 * * *'
     - cron: '0 15 * * *'
@@ -19,7 +17,7 @@ on:
       action_name:
         description: "Manual test action"
         required: true
-        default: "save_1pm"
+        default: "notify_1pm_live"
         type: choice
         options:
           - notify_1pm_live
@@ -108,24 +106,23 @@ jobs:
               payload = {
                   "message": {
                       "topic": fcm_topic,
-                      "notification": {
-                          "title": title,
-                          "body": body
-                      },
                       "data": {
                           "title": title,
                           "body": body,
                           "image": image,
                           "extra": extra,
                           "time": draw_time,
-                          "date": current_date,
-                          "click_action": "OPEN_ACTIVITY"
+                          "date": current_date
                       },
                       "android": {
                           "priority": "HIGH"
                       }
                   }
               }
+
+              print("FCM topic:", fcm_topic)
+              print("FCM URL:", url)
+              print("FCM payload:", json.dumps(payload))
 
               r = requests.post(url, headers=headers, json=payload, timeout=30)
               print("FCM status:", r.status_code)
@@ -221,11 +218,9 @@ jobs:
                   "30 7 * * *": "notify_1pm_live",
                   "40 7 * * *": "notify_1pm_result",
                   "0 8 * * *": "save_1pm",
-
                   "30 12 * * *": "notify_6pm_live",
                   "40 12 * * *": "notify_6pm_result",
                   "0 13 * * *": "save_6pm",
-
                   "30 14 * * *": "notify_8pm_live",
                   "40 14 * * *": "notify_8pm_result",
                   "0 15 * * *": "save_8pm"
@@ -240,17 +235,14 @@ jobs:
               send_notification("1pm", "TEST 1PM LIVE", "GitHub se test notification")
           elif action == "notify_1pm_result":
               send_notification("1pm", "TEST 1PM RESULT", "GitHub se test result notification")
-
           elif action == "notify_6pm_live":
               send_notification("6pm", "TEST 6PM LIVE", "GitHub se test notification")
           elif action == "notify_6pm_result":
               send_notification("6pm", "TEST 6PM RESULT", "GitHub se test result notification")
-
           elif action == "notify_8pm_live":
               send_notification("8pm", "TEST 8PM LIVE", "GitHub se test notification")
           elif action == "notify_8pm_result":
               send_notification("8pm", "TEST 8PM RESULT", "GitHub se test result notification")
-
           elif action == "save_1pm":
               save_result("1pm")
           elif action == "save_6pm":
