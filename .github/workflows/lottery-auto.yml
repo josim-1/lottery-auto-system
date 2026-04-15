@@ -3,28 +3,19 @@ name: Lottery Auto System
 on:
   schedule:
     # Notifications - India time
-    - cron: '0 13 * * *'
-      timezone: 'Asia/Kolkata'   # 1:00 PM
-    - cron: '10 13 * * *'
-      timezone: 'Asia/Kolkata'   # 1:10 PM
+    - cron: '0 13 * * *'   # 1:00 PM
+    - cron: '10 13 * * *'  # 1:10 PM
 
-    - cron: '0 18 * * *'
-      timezone: 'Asia/Kolkata'   # 6:00 PM
-    - cron: '10 18 * * *'
-      timezone: 'Asia/Kolkata'   # 6:10 PM
+    - cron: '0 18 * * *'   # 6:00 PM
+    - cron: '10 18 * * *'  # 6:10 PM
 
-    - cron: '0 20 * * *'
-      timezone: 'Asia/Kolkata'   # 8:00 PM
-    - cron: '10 20 * * *'
-      timezone: 'Asia/Kolkata'   # 8:10 PM
+    - cron: '0 20 * * *'   # 8:00 PM
+    - cron: '10 20 * * *'  # 8:10 PM
 
     # Firebase upload - India time
-    - cron: '20 13 * * *'
-      timezone: 'Asia/Kolkata'   # 1:20 PM
-    - cron: '20 18 * * *'
-      timezone: 'Asia/Kolkata'   # 6:20 PM
-    - cron: '20 20 * * *'
-      timezone: 'Asia/Kolkata'   # 8:20 PM
+    - cron: '20 13 * * *'  # 1:20 PM
+    - cron: '20 18 * * *'  # 6:20 PM
+    - cron: '20 20 * * *'  # 8:20 PM
 
   workflow_dispatch:
     inputs:
@@ -43,6 +34,7 @@ on:
           - save_1pm
           - save_6pm
           - save_8pm
+          - cleanup_old_dates
 
 jobs:
   auto-run:
@@ -73,7 +65,6 @@ jobs:
           import json
           import requests
           import datetime
-          import calendar
           import urllib.parse
 
           from google.oauth2 import service_account
@@ -97,7 +88,6 @@ jobs:
           creds.refresh(Request())
           access_token = creds.token
 
-          # Always use India time
           ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
           now_ist = datetime.datetime.now(ist)
           today_date = now_ist.strftime("%Y-%m-%d")
@@ -137,35 +127,53 @@ jobs:
               print("FCM body:", r.text)
               r.raise_for_status()
 
-          def previous_month_same_day(date_str):
-              dt = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-
-              if dt.month == 1:
-                  prev_year = dt.year - 1
-                  prev_month = 12
-              else:
-                  prev_year = dt.year
-                  prev_month = dt.month - 1
-
-              last_day_prev_month = calendar.monthrange(prev_year, prev_month)[1]
-              if dt.day > last_day_prev_month:
+          def firebase_get(path):
+              url = auth_db_url(f"{db_url}{path}.json")
+              r = requests.get(url, timeout=30)
+              print("GET", path, r.status_code)
+              r.raise_for_status()
+              if r.text == "null":
                   return None
+              return r.json()
 
-              prev_date = datetime.date(prev_year, prev_month, dt.day)
-              return prev_date.strftime("%Y-%m-%d")
+          def firebase_put(path, data):
+              url = auth_db_url(f"{db_url}{path}.json")
+              r = requests.put(url, json=data, timeout=30)
+              print("PUT", path, r.status_code, r.text)
+              r.raise_for_status()
 
-          def delete_previous_month_same_time(current_date, draw_time):
-              prev_date = previous_month_same_day(current_date)
-              if prev_date is None:
-                  print("No same date in previous month. Skip delete.")
+          def firebase_delete(path):
+              url = auth_db_url(f"{db_url}{path}.json")
+              r = requests.delete(url, timeout=30)
+              print("DELETE", path, r.status_code, r.text)
+              r.raise_for_status()
+
+          def cleanup_keep_latest_30_dates():
+              results = firebase_get("/FirebaseDB/results")
+              if not results or not isinstance(results, dict):
+                  print("No results data found for cleanup.")
                   return
 
-              delete_url = f"{db_url}/FirebaseDB/results/{prev_date}/{draw_time}.json"
-              delete_url = auth_db_url(delete_url)
+              # Keep only valid date keys like YYYY-MM-DD
+              valid_dates = []
+              for key in results.keys():
+                  try:
+                      datetime.datetime.strptime(key, "%Y-%m-%d")
+                      valid_dates.append(key)
+                  except Exception:
+                      print("Skip non-date key:", key)
 
-              rr = requests.delete(delete_url, timeout=30)
-              print("Delete status:", rr.status_code)
-              print("Delete body:", rr.text)
+              valid_dates.sort()  # oldest -> newest
+
+              if len(valid_dates) <= 30:
+                  print("30 or fewer dates found. No cleanup needed.")
+                  return
+
+              dates_to_delete = valid_dates[:-30]
+              print("Deleting old dates:", dates_to_delete)
+
+              for date_key in dates_to_delete:
+                  firebase_delete(f"/FirebaseDB/results/{date_key}")
 
           def save_result(draw_time):
               api_url = f"https://indialotteryapi.com/wp-json/dearlottery/v1/by-date?date={today_date}&time={draw_time}&fallback=1"
@@ -177,7 +185,6 @@ jobs:
               r.raise_for_status()
 
               obj = r.json()
-
               draw_no = obj.get("no", "")
               prizes = obj.get("prizes", {}) or {}
 
@@ -200,15 +207,11 @@ jobs:
                   "saved_at": int(now_ist.timestamp() * 1000)
               }
 
-              save_url = f"{db_url}/FirebaseDB/results/{today_date}/{draw_time}.json"
-              save_url = auth_db_url(save_url)
+              firebase_put(f"/FirebaseDB/results/{today_date}/{draw_time}", data_map)
 
-              rr = requests.put(save_url, json=data_map, timeout=30)
-              print("Save Firebase status:", rr.status_code)
-              print("Save Firebase body:", rr.text)
-              rr.raise_for_status()
-
-              delete_previous_month_same_time(today_date, draw_time)
+              # 8:20 PM save ke baad old dates cleanup
+              if draw_time == "8pm":
+                  cleanup_keep_latest_30_dates()
 
           def choose_action():
               if event_name == "workflow_dispatch":
@@ -237,20 +240,26 @@ jobs:
               send_notification("1pm", "Live result available", "Live result available")
           elif action == "notify_1pm_result":
               send_notification("1pm", "Result available", "Result available")
+
           elif action == "notify_6pm_live":
               send_notification("6pm", "Live result available", "Live result available")
           elif action == "notify_6pm_result":
               send_notification("6pm", "Result available", "Result available")
+
           elif action == "notify_8pm_live":
               send_notification("8pm", "Live result available", "Live result available")
           elif action == "notify_8pm_result":
               send_notification("8pm", "Result available", "Result available")
+
           elif action == "save_1pm":
               save_result("1pm")
           elif action == "save_6pm":
               save_result("6pm")
           elif action == "save_8pm":
               save_result("8pm")
+
+          elif action == "cleanup_old_dates":
+              cleanup_keep_latest_30_dates()
           else:
               print("No valid action selected.")
           PY
