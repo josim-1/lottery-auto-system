@@ -2,20 +2,29 @@ name: Lottery Auto System
 
 on:
   schedule:
-    # Notifications
-    - cron: '30 7 * * *'   # 1:00 PM IST
-    - cron: '40 7 * * *'   # 1:10 PM IST
+    # Notifications - India time
+    - cron: '0 13 * * *'
+      timezone: 'Asia/Kolkata'   # 1:00 PM
+    - cron: '10 13 * * *'
+      timezone: 'Asia/Kolkata'   # 1:10 PM
 
-    - cron: '30 12 * * *'  # 6:00 PM IST
-    - cron: '40 12 * * *'  # 6:10 PM IST
+    - cron: '0 18 * * *'
+      timezone: 'Asia/Kolkata'   # 6:00 PM
+    - cron: '10 18 * * *'
+      timezone: 'Asia/Kolkata'   # 6:10 PM
 
-    - cron: '30 14 * * *'  # 8:00 PM IST
-    - cron: '40 14 * * *'  # 8:10 PM IST
+    - cron: '0 20 * * *'
+      timezone: 'Asia/Kolkata'   # 8:00 PM
+    - cron: '10 20 * * *'
+      timezone: 'Asia/Kolkata'   # 8:10 PM
 
-    # Firebase upload after 30 min
-    - cron: '0 8 * * *'    # 1:30 PM IST
-    - cron: '0 13 * * *'   # 6:30 PM IST
-    - cron: '0 15 * * *'   # 8:30 PM IST
+    # Firebase upload - India time
+    - cron: '20 13 * * *'
+      timezone: 'Asia/Kolkata'   # 1:20 PM
+    - cron: '20 18 * * *'
+      timezone: 'Asia/Kolkata'   # 6:20 PM
+    - cron: '20 20 * * *'
+      timezone: 'Asia/Kolkata'   # 8:20 PM
 
   workflow_dispatch:
     inputs:
@@ -88,8 +97,9 @@ jobs:
           creds.refresh(Request())
           access_token = creds.token
 
-          now_utc = datetime.datetime.now(datetime.timezone.utc)
-          now_ist = now_utc + datetime.timedelta(hours=5, minutes=30)
+          # Always use India time
+          ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+          now_ist = datetime.datetime.now(ist)
           today_date = now_ist.strftime("%Y-%m-%d")
 
           def auth_db_url(url):
@@ -205,17 +215,17 @@ jobs:
                   return manual_action
 
               schedule_map = {
-                  "30 7 * * *": "notify_1pm_live",
-                  "40 7 * * *": "notify_1pm_result",
-                  "0 8 * * *": "save_1pm",
+                  "0 13 * * *": "notify_1pm_live",
+                  "10 13 * * *": "notify_1pm_result",
+                  "20 13 * * *": "save_1pm",
 
-                  "30 12 * * *": "notify_6pm_live",
-                  "40 12 * * *": "notify_6pm_result",
-                  "0 13 * * *": "save_6pm",
+                  "0 18 * * *": "notify_6pm_live",
+                  "10 18 * * *": "notify_6pm_result",
+                  "20 18 * * *": "save_6pm",
 
-                  "30 14 * * *": "notify_8pm_live",
-                  "40 14 * * *": "notify_8pm_result",
-                  "0 15 * * *": "save_8pm"
+                  "0 20 * * *": "notify_8pm_live",
+                  "10 20 * * *": "notify_8pm_result",
+                  "20 20 * * *": "save_8pm"
               }
               return schedule_map.get(event_schedule, "")
 
@@ -227,17 +237,14 @@ jobs:
               send_notification("1pm", "Live result available", "Live result available")
           elif action == "notify_1pm_result":
               send_notification("1pm", "Result available", "Result available")
-
           elif action == "notify_6pm_live":
               send_notification("6pm", "Live result available", "Live result available")
           elif action == "notify_6pm_result":
               send_notification("6pm", "Result available", "Result available")
-
           elif action == "notify_8pm_live":
               send_notification("8pm", "Live result available", "Live result available")
           elif action == "notify_8pm_result":
               send_notification("8pm", "Result available", "Result available")
-
           elif action == "save_1pm":
               save_result("1pm")
           elif action == "save_6pm":
