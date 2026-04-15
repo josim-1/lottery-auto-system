@@ -1,31 +1,14 @@
-name: Lottery Auto System
+name: Lottery Auto System Test
 
 on:
-  schedule:
-    - cron: '30 7 * * *'
-    - cron: '40 7 * * *'
-    - cron: '0 8 * * *'
-    - cron: '30 12 * * *'
-    - cron: '40 12 * * *'
-    - cron: '0 13 * * *'
-    - cron: '30 14 * * *'
-    - cron: '40 14 * * *'
-    - cron: '0 15 * * *'
-
   workflow_dispatch:
     inputs:
       action_name:
-        description: "Manual test action"
+        description: "Select test action"
         required: true
         default: "save_1pm"
         type: choice
         options:
-          - notify_1pm_live
-          - notify_1pm_result
-          - notify_6pm_live
-          - notify_6pm_result
-          - notify_8pm_live
-          - notify_8pm_result
           - save_1pm
           - save_6pm
           - save_8pm
@@ -41,17 +24,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install packages
-        run: pip install requests google-auth
+        run: pip install requests
 
-      - name: Run automation
+      - name: Run test
         env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_AUTH: ${{ secrets.FIREBASE_AUTH }}
-          FCM_TOPIC: ${{ secrets.FCM_TOPIC }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           MANUAL_ACTION_NAME: ${{ github.event.inputs.action_name }}
         run: |
           python - << 'PY'
@@ -59,38 +37,15 @@ jobs:
           import json
           import requests
           import datetime
-          import calendar
           import urllib.parse
 
-          from google.oauth2 import service_account
-          from google.auth.transport.requests import Request
-
-          project_id = os.environ["FIREBASE_PROJECT_ID"]
-          service_account_json = os.environ["FIREBASE_SERVICE_ACCOUNT"]
           db_url = os.environ["FIREBASE_DB_URL"].rstrip("/")
           db_auth = os.environ.get("FIREBASE_AUTH", "").strip()
-          fcm_topic = os.environ.get("FCM_TOPIC", "all").strip() or "all"
-
-          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-          event_schedule = os.environ.get("GITHUB_EVENT_SCHEDULE", "")
-          manual_action = os.environ.get("MANUAL_ACTION_NAME", "")
-
-          creds_info = json.loads(service_account_json)
-          creds = service_account.Credentials.from_service_account_info(
-              creds_info,
-              scopes=[
-                  "https://www.googleapis.com/auth/firebase.messaging",
-                  "https://www.googleapis.com/auth/firebase.database"
-              ]
-          )
-          creds.refresh(Request())
-          access_token = creds.token
+          action = os.environ.get("MANUAL_ACTION_NAME", "")
 
           now_utc = datetime.datetime.now(datetime.timezone.utc)
           now_ist = now_utc + datetime.timedelta(hours=5, minutes=30)
-
-          # Always use IST current date for Firebase path
-          current_date = now_ist.strftime("%Y-%m-%d")
+          today_date = now_ist.strftime("%Y-%m-%d")
 
           def auth_db_url(url):
               if db_auth:
@@ -98,76 +53,9 @@ jobs:
                   return f"{url}{sep}auth={urllib.parse.quote(db_auth)}"
               return url
 
-          def send_notification(draw_time, title, body, extra="second", image=""):
-              url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
-              headers = {
-                  "Authorization": f"Bearer {access_token}",
-                  "Content-Type": "application/json; charset=UTF-8"
-              }
-
-              payload = {
-                  "message": {
-                      "topic": fcm_topic,
-                      "data": {
-                          "title": title,
-                          "body": body,
-                          "image": image,
-                          "extra": extra,
-                          "time": draw_time,
-                          "date": current_date
-                      },
-                      "android": {
-                          "priority": "HIGH"
-                      }
-                  }
-              }
-
-              print("FCM topic:", fcm_topic)
-              print("FCM URL:", url)
-              print("FCM payload:", json.dumps(payload))
-
-              r = requests.post(url, headers=headers, json=payload, timeout=30)
-              print("FCM status:", r.status_code)
-              print("FCM body:", r.text)
-              r.raise_for_status()
-
-          def previous_month_same_day(date_obj):
-              year = date_obj.year
-              month = date_obj.month
-              day = date_obj.day
-
-              if month == 1:
-                  prev_year = year - 1
-                  prev_month = 12
-              else:
-                  prev_year = year
-                  prev_month = month - 1
-
-              last_day_prev_month = calendar.monthrange(prev_year, prev_month)[1]
-              if day > last_day_prev_month:
-                  return None
-
-              return datetime.date(prev_year, prev_month, day)
-
-          def delete_previous_month_record(save_date_str, time_value):
-              date_obj = datetime.datetime.strptime(save_date_str, "%Y-%m-%d").date()
-              prev_same = previous_month_same_day(date_obj)
-
-              if prev_same is None:
-                  print("No previous-month same day. Skip delete.")
-                  return
-
-              prev_date_str = prev_same.strftime("%Y-%m-%d")
-              delete_url = f"{db_url}/results/{prev_date_str}/{time_value}.json"
-              delete_url = auth_db_url(delete_url)
-
-              rr = requests.delete(delete_url, timeout=30)
-              print("Delete status:", rr.status_code)
-              print("Delete body:", rr.text)
-
           def save_result(draw_time):
-              api_url = f"https://indialotteryapi.com/wp-json/dearlottery/v1/by-date?date={current_date}&time={draw_time}&fallback=1"
-              print("Fetching:", api_url)
+              api_url = f"https://indialotteryapi.com/wp-json/dearlottery/v1/by-date?date={today_date}&time={draw_time}&fallback=1"
+              print("Fetching API:", api_url)
 
               r = requests.get(api_url, timeout=30)
               print("API status:", r.status_code)
@@ -177,24 +65,16 @@ jobs:
               obj = r.json()
 
               draw_no = obj.get("no", "")
-              api_date = obj.get("date", "")
-              time_value = obj.get("time", draw_time)
               prizes = obj.get("prizes", {}) or {}
 
               if not draw_no:
-                  print("draw_no empty. Skip save.")
+                  print("draw_no empty. No save.")
                   return
-
-              # IMPORTANT FIX:
-              # Save path always uses IST current date, not API date
-              save_date = current_date
 
               data_map = {
                   "draw_no": draw_no,
-                  "date": save_date,
-                  "api_date": api_date,
-                  "time": time_value,
-                  "test_status": "github_test_ok",
+                  "date": today_date,
+                  "time": draw_time,
                   "prizes": {
                       "1st": json.dumps(prizes.get("1st", []), ensure_ascii=False),
                       "cons": json.dumps(prizes.get("cons", []), ensure_ascii=False),
@@ -203,58 +83,28 @@ jobs:
                       "4th": json.dumps(prizes.get("4th", []), ensure_ascii=False),
                       "5th": json.dumps(prizes.get("5th", []), ensure_ascii=False)
                   },
+                  "test_status": "github_test_ok",
                   "saved_at": int(now_ist.timestamp() * 1000)
               }
 
-              save_url = f"{db_url}/results/{save_date}/{time_value}.json"
+              save_url = f"{db_url}/results/{today_date}/{draw_time}.json"
               save_url = auth_db_url(save_url)
 
               rr = requests.put(save_url, json=data_map, timeout=30)
+              print("Firebase save URL:", save_url)
               print("Save Firebase status:", rr.status_code)
               print("Save Firebase body:", rr.text)
               rr.raise_for_status()
 
-              delete_previous_month_record(save_date, time_value)
-
-          def choose_action():
-              if event_name == "workflow_dispatch":
-                  return manual_action
-
-              schedule_map = {
-                  "30 7 * * *": "notify_1pm_live",
-                  "40 7 * * *": "notify_1pm_result",
-                  "0 8 * * *": "save_1pm",
-                  "30 12 * * *": "notify_6pm_live",
-                  "40 12 * * *": "notify_6pm_result",
-                  "0 13 * * *": "save_6pm",
-                  "30 14 * * *": "notify_8pm_live",
-                  "40 14 * * *": "notify_8pm_result",
-                  "0 15 * * *": "save_8pm"
-              }
-              return schedule_map.get(event_schedule, "")
-
-          action = choose_action()
+          print("Today IST date:", today_date)
           print("Selected action:", action)
-          print("Current IST date:", current_date)
 
-          if action == "notify_1pm_live":
-              send_notification("1pm", "TEST 1PM LIVE", "GitHub se test notification")
-          elif action == "notify_1pm_result":
-              send_notification("1pm", "TEST 1PM RESULT", "GitHub se test result notification")
-          elif action == "notify_6pm_live":
-              send_notification("6pm", "TEST 6PM LIVE", "GitHub se test notification")
-          elif action == "notify_6pm_result":
-              send_notification("6pm", "TEST 6PM RESULT", "GitHub se test result notification")
-          elif action == "notify_8pm_live":
-              send_notification("8pm", "TEST 8PM LIVE", "GitHub se test notification")
-          elif action == "notify_8pm_result":
-              send_notification("8pm", "TEST 8PM RESULT", "GitHub se test result notification")
-          elif action == "save_1pm":
+          if action == "save_1pm":
               save_result("1pm")
           elif action == "save_6pm":
               save_result("6pm")
           elif action == "save_8pm":
               save_result("8pm")
           else:
-              print("No valid action selected.")
+              print("Invalid action")
           PY
