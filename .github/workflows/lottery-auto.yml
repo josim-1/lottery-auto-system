@@ -154,7 +154,6 @@ jobs:
                   print("No results data found for cleanup.")
                   return
 
-              # Keep only valid date keys like YYYY-MM-DD
               valid_dates = []
               for key in results.keys():
                   try:
@@ -163,7 +162,7 @@ jobs:
                   except Exception:
                       print("Skip non-date key:", key)
 
-              valid_dates.sort()  # oldest -> newest
+              valid_dates.sort()
 
               if len(valid_dates) <= 30:
                   print("30 or fewer dates found. No cleanup needed.")
@@ -209,7 +208,6 @@ jobs:
 
               firebase_put(f"/FirebaseDB/results/{today_date}/{draw_time}", data_map)
 
-              # 8:20 PM save ke baad old dates cleanup
               if draw_time == "8pm":
                   cleanup_keep_latest_30_dates()
 
@@ -237,19 +235,43 @@ jobs:
           print("Today date:", today_date)
 
           if action == "notify_1pm_live":
-              send_notification("1pm", "Live result available", "Live result available")
+              send_notification(
+                  "1pm",
+                  "1pm Live result available | ১টার লাইভ রেজাল্ট উপলব্ধ",
+                  "1pm Live result available | ১টার লাইভ রেজাল্ট উপলব্ধ"
+              )
           elif action == "notify_1pm_result":
-              send_notification("1pm", "Result available", "Result available")
+              send_notification(
+                  "1pm",
+                  "1pm Result available | ১টার রেজাল্ট উপলব্ধ",
+                  "1pm Result available | ১টার রেজাল্ট উপলব্ধ"
+              )
 
           elif action == "notify_6pm_live":
-              send_notification("6pm", "Live result available", "Live result available")
+              send_notification(
+                  "6pm",
+                  "6pm Live result available | ৬টার লাইভ রেজাল্ট উপলব্ধ",
+                  "6pm Live result available | ৬টার লাইভ রেজাল্ট উপলব্ধ"
+              )
           elif action == "notify_6pm_result":
-              send_notification("6pm", "Result available", "Result available")
+              send_notification(
+                  "6pm",
+                  "6pm Result available | ৬টার রেজাল্ট উপলব্ধ",
+                  "6pm Result available | ৬টার রেজাল্ট উপলব্ধ"
+              )
 
           elif action == "notify_8pm_live":
-              send_notification("8pm", "Live result available", "Live result available")
+              send_notification(
+                  "8pm",
+                  "8pm Live result available | ৮টার লাইভ রেজাল্ট উপলব্ধ",
+                  "8pm Live result available | ৮টার লাইভ রেজাল্ট উপলব্ধ"
+              )
           elif action == "notify_8pm_result":
-              send_notification("8pm", "Result available", "Result available")
+              send_notification(
+                  "8pm",
+                  "8pm Result available | ৮টার রেজাল্ট উপলব্ধ",
+                  "8pm Result available | ৮টার রেজাল্ট উপলব্ধ"
+              )
 
           elif action == "save_1pm":
               save_result("1pm")
@@ -257,7 +279,6 @@ jobs:
               save_result("6pm")
           elif action == "save_8pm":
               save_result("8pm")
-
           elif action == "cleanup_old_dates":
               cleanup_keep_latest_30_dates()
           else:
