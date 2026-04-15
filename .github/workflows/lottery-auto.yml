@@ -1,10 +1,10 @@
-name: Lottery Auto System Test
+name: Firebase Save Test
 
 on:
   workflow_dispatch:
     inputs:
       action_name:
-        description: "Select test action"
+        description: "Select save test"
         required: true
         default: "save_1pm"
         type: choice
@@ -26,7 +26,7 @@ jobs:
       - name: Install packages
         run: pip install requests
 
-      - name: Run test
+      - name: Run Firebase save test
         env:
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
           FIREBASE_AUTH: ${{ secrets.FIREBASE_AUTH }}
@@ -87,7 +87,9 @@ jobs:
                   "saved_at": int(now_ist.timestamp() * 1000)
               }
 
-              save_url = f"{db_url}/results/{today_date}/{draw_time}.json"
+              # IMPORTANT FIX:
+              # Firebase root me FirebaseDB node already hai
+              save_url = f"{db_url}/FirebaseDB/results/{today_date}/{draw_time}.json"
               save_url = auth_db_url(save_url)
 
               rr = requests.put(save_url, json=data_map, timeout=30)
