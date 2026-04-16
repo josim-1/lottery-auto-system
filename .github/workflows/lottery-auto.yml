@@ -2,20 +2,29 @@ name: Lottery Auto System
 
 on:
   schedule:
-    # Notifications - India time
-    - cron: '0 13 * * *'   # 1:00 PM
-    - cron: '10 13 * * *'  # 1:10 PM
+    # Notifications - India time (offset from :00 to reduce GitHub delay risk)
+    - cron: '1 13 * * *'
+      timezone: 'Asia/Kolkata'   # 1:01 PM
+    - cron: '11 13 * * *'
+      timezone: 'Asia/Kolkata'   # 1:11 PM
 
-    - cron: '0 18 * * *'   # 6:00 PM
-    - cron: '10 18 * * *'  # 6:10 PM
+    - cron: '1 18 * * *'
+      timezone: 'Asia/Kolkata'   # 6:01 PM
+    - cron: '11 18 * * *'
+      timezone: 'Asia/Kolkata'   # 6:11 PM
 
-    - cron: '0 20 * * *'   # 8:00 PM
-    - cron: '10 20 * * *'  # 8:10 PM
+    - cron: '1 20 * * *'
+      timezone: 'Asia/Kolkata'   # 8:01 PM
+    - cron: '11 20 * * *'
+      timezone: 'Asia/Kolkata'   # 8:11 PM
 
     # Firebase upload - India time
-    - cron: '20 13 * * *'  # 1:20 PM
-    - cron: '20 18 * * *'  # 6:20 PM
-    - cron: '20 20 * * *'  # 8:20 PM
+    - cron: '20 13 * * *'
+      timezone: 'Asia/Kolkata'   # 1:20 PM
+    - cron: '20 18 * * *'
+      timezone: 'Asia/Kolkata'   # 6:20 PM
+    - cron: '20 20 * * *'
+      timezone: 'Asia/Kolkata'   # 8:20 PM
 
   workflow_dispatch:
     inputs:
@@ -216,16 +225,16 @@ jobs:
                   return manual_action
 
               schedule_map = {
-                  "0 13 * * *": "notify_1pm_live",
-                  "10 13 * * *": "notify_1pm_result",
+                  "1 13 * * *": "notify_1pm_live",
+                  "11 13 * * *": "notify_1pm_result",
                   "20 13 * * *": "save_1pm",
 
-                  "0 18 * * *": "notify_6pm_live",
-                  "10 18 * * *": "notify_6pm_result",
+                  "1 18 * * *": "notify_6pm_live",
+                  "11 18 * * *": "notify_6pm_result",
                   "20 18 * * *": "save_6pm",
 
-                  "0 20 * * *": "notify_8pm_live",
-                  "10 20 * * *": "notify_8pm_result",
+                  "1 20 * * *": "notify_8pm_live",
+                  "11 20 * * *": "notify_8pm_result",
                   "20 20 * * *": "save_8pm"
               }
               return schedule_map.get(event_schedule, "")
